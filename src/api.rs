@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use reqwest::{Client, ClientBuilder, RequestBuilder, StatusCode, header::HeaderMap};
 
 use crate::{
-    VERSION,
-    err::{self, delete, post, validate},
-    nexus_joiner,
-    request::{ModId, TrackedModsRaw, Validate},
+    err::{self, delete, post, validate}, nexus_joiner, request::{Endorsements, ModId, TrackedModsRaw, Validate}, VERSION
 };
 
 /// Root level API handler.
@@ -63,6 +60,27 @@ impl Api {
     /// Validate API key and retrieve user details.
     pub async fn validate(&self) -> Result<Validate, validate::ValidateError> {
         let response = self.get_api(VERSION, "users/validate", self.key()).await?;
+
+        match response.status() {
+            StatusCode::OK => serde_json::from_str(&response.text().await?)
+                .map_err(validate::ValidateError::SerdeJson),
+            StatusCode::UNAUTHORIZED => {
+                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
+                Err(validate::ValidateError::InvalidAPIKey(err))
+            }
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                unimplemented!(
+                    "I have not yet encountered this return code but it is listed as a valid return code"
+                );
+            }
+            _ => unreachable!("The only three documented return codes are 200, 404 (401), and 422"),
+        }
+    }
+
+    pub async fn endorsements(&self) -> Result<Endorsements, validate::ValidateError> {
+        let response = self
+            .get_api(VERSION, "user/endorsements", self.key())
+            .await?;
 
         match response.status() {
             StatusCode::OK => serde_json::from_str(&response.text().await?)

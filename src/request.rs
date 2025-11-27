@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
+use time::{OffsetDateTime, UtcDateTime};
 
 #[macro_export]
 macro_rules! nexus_joiner {
@@ -16,23 +17,23 @@ macro_rules! nexus_joiner {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Validate {
-    pub user_id: usize,
-    pub key: String,
-    pub name: String,
+    user_id: usize,
+    key: String,
+    name: String,
     #[serde(alias = "is_premium?")]
-    pub is_premium_q: bool,
+    is_premium_q: bool,
     #[serde(alias = "is_supporter?")]
-    pub is_supporter_q: bool,
-    pub email: String,
-    pub profile_url: String,
-    pub is_premium: bool,
-    pub is_supporter: bool,
+    is_supporter_q: bool,
+    email: String,
+    profile_url: String,
+    is_premium: bool,
+    is_supporter: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModEntry {
-    pub mod_id: ModId,
-    pub domain_name: String,
+    mod_id: ModId,
+    domain_name: String,
 }
 
 /// A mod ID is a thin wrapper for a `u64`, but everywhere that you see [`ModId`], you can assume
@@ -53,6 +54,12 @@ impl ModId {
     /// [`ModId`].
     pub(crate) const fn from_u64(id: u64) -> Self {
         Self { id }
+    }
+}
+
+impl PartialEq<u64> for ModId {
+    fn eq(&self, other: &u64) -> bool {
+        self.id() == *other
     }
 }
 
@@ -99,4 +106,71 @@ impl TrackedMods {
     pub fn from_game(&self, name: &str) -> Option<&[ModId]> {
         self.mods.get(name).map(|v| &**v)
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Endorsements {
+    mods: Vec<Endorsement>,
+}
+
+impl IntoIterator for Endorsements {
+    type Item = Endorsement;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.mods.into_iter()
+    }
+}
+
+impl Endorsements {
+    pub fn find<F>(&self, func: F) -> Option<&Endorsement>
+    where
+        F: Fn(&Endorsement) -> bool,
+    {
+        self.mods.iter().find(|e| func(e))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Endorsement {
+    mod_id: ModId,
+    domain_name: String,
+    #[serde(with = "time::serde::iso8601")]
+    date: OffsetDateTime,
+    version: Option<String>,
+    status: EndorseStatus,
+}
+
+impl Endorsement {
+    pub const fn id(&self) -> ModId {
+        self.mod_id
+    }
+
+    pub fn domain_name(&self) -> &str {
+        &self.domain_name
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    pub fn date(&self) -> UtcDateTime {
+        self.date.to_utc()
+    }
+
+    pub const fn endorsed_status(&self) -> EndorseStatus {
+        self.status
+    }
+
+    pub const fn is_endorsed(&self) -> bool {
+        matches!(self.status, EndorseStatus::Endorsed)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EndorseStatus {
+    Endorsed,
+    #[serde(untagged)]
+    NotEndorsed,
 }
