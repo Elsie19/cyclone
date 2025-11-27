@@ -1,0 +1,10 @@
+[package]
+name = "cyclone"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reqwest = "0.12.24"
+serde = "1.0.228"
+serde_json = "1.0.145"
+thiserror = "2.0.17"
