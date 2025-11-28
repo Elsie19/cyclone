@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use reqwest::{
-    Client, ClientBuilder, Method, RequestBuilder, StatusCode,
+    Client, ClientBuilder, Method, RequestBuilder, Response, StatusCode,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
 
@@ -10,7 +10,8 @@ use crate::{
     err::{self, delete, get, post, validate},
     nexus_joiner,
     request::{
-        CategoryName, Endorsements, GameId, ModFile, ModFiles, ModId, TrackedModsRaw, Validate,
+        CategoryName, Endorsements, GameId, ModFile, ModFiles, ModId, ModUpdated, TimePeriod,
+        TrackedModsRaw, Validate,
     },
 };
 
@@ -45,21 +46,11 @@ impl Api {
         method: Method,
         ver: &str,
         slugs: &[&str],
-        extra_headers: &[(&'static str, &str)],
+        params: &[(&'static str, &str)],
     ) -> RequestBuilder {
         self.client
             .request(method, nexus_joiner!(ver, slugs))
-            .headers(
-                extra_headers
-                    .iter()
-                    .map(|(k, v)| {
-                        (
-                            HeaderName::from_static(k),
-                            HeaderValue::from_str(v).unwrap(),
-                        )
-                    })
-                    .collect(),
-            )
+            .query(params)
     }
 
     /// Validate API key and retrieve user details.
@@ -283,6 +274,34 @@ impl Api {
                     file_id.to_string().as_str(),
                 ],
                 &[],
+            )
+            .send()
+            .await?;
+
+        match response.status() {
+            StatusCode::OK => response.json().await.map_err(get::GameModError::Reqwest),
+            StatusCode::NOT_FOUND => Err(response.json::<err::InvalidAPIKeyError>().await?.into()),
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                unimplemented!(
+                    "I have not yet encountered this return code but it is listed as a valid return code"
+                );
+            }
+            _ => unreachable!("The only three documented return codes are 200, 404, and 422"),
+        }
+    }
+
+    /// Get a list of mods updated within a timeframe.
+    pub async fn updated_during(
+        &self,
+        game: &str,
+        time: TimePeriod,
+    ) -> Result<Vec<ModUpdated>, get::GameModError> {
+        let response = self
+            .build(
+                Method::GET,
+                VERSION,
+                &["games", game, "mods", "updated"],
+                &[("period", time.as_str())],
             )
             .send()
             .await?;

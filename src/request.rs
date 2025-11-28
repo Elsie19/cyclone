@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, time::Duration};
 
 use reqwest::Url;
 use serde::{
@@ -97,10 +97,6 @@ impl ModId {
     /// Get the underlying `u64`.
     pub const fn id(&self) -> u64 {
         self.id
-    }
-
-    pub fn to_string(self) -> String {
-        self.id.to_string()
     }
 
     /// Secret teehee. Use this internally when you verify that a given u64 actually is a valid
@@ -643,5 +639,56 @@ impl PreviewFileRoot {
         }
 
         out
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModUpdated {
+    mod_id: ModId,
+    #[serde(with = "time::serde::timestamp")]
+    latest_file_update: OffsetDateTime,
+    #[serde(with = "time::serde::timestamp")]
+    latest_mod_activity: OffsetDateTime,
+}
+
+impl ModUpdated {
+    pub const fn id(&self) -> ModId {
+        self.mod_id
+    }
+
+    pub fn last_updated(&self) -> UtcDateTime {
+        self.latest_file_update.to_utc()
+    }
+
+    pub fn last_activity(&self) -> UtcDateTime {
+        self.latest_mod_activity.to_utc()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TimePeriod {
+    Day,
+    Week,
+    Month,
+}
+
+impl TimePeriod {
+    pub(crate) const fn as_str(&self) -> &str {
+        match self {
+            Self::Day => "1d",
+            Self::Week => "1w",
+            Self::Month => "1m",
+        }
+    }
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<Duration> for TimePeriod {
+    fn into(self) -> Duration {
+        match self {
+            Self::Day => Duration::from_hours(24),
+            Self::Week => Duration::from_hours(24 * 7),
+            Self::Month => Duration::from_hours(24 * 7 * 31),
+        }
     }
 }
