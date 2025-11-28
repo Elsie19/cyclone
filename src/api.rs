@@ -70,12 +70,13 @@ impl Api {
             .await?;
 
         match response.status() {
-            StatusCode::OK => serde_json::from_str(&response.text().await?)
-                .map_err(validate::ValidateError::SerdeJson),
-            StatusCode::UNAUTHORIZED => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(validate::ValidateError::InvalidAPIKey(err))
-            }
+            StatusCode::OK => response
+                .json()
+                .await
+                .map_err(validate::ValidateError::Reqwest),
+            StatusCode::UNAUTHORIZED => Err(validate::ValidateError::InvalidAPIKey(
+                response.json().await?,
+            )),
             StatusCode::UNPROCESSABLE_ENTITY => {
                 unimplemented!(
                     "I have not yet encountered this return code but it is listed as a valid return code"
@@ -93,12 +94,13 @@ impl Api {
             .await?;
 
         match response.status() {
-            StatusCode::OK => serde_json::from_str(&response.text().await?)
-                .map_err(validate::ValidateError::SerdeJson),
-            StatusCode::UNAUTHORIZED => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(validate::ValidateError::InvalidAPIKey(err))
-            }
+            StatusCode::OK => response
+                .json()
+                .await
+                .map_err(validate::ValidateError::Reqwest),
+            StatusCode::UNAUTHORIZED => Err(validate::ValidateError::InvalidAPIKey(
+                response.json().await?,
+            )),
             StatusCode::UNPROCESSABLE_ENTITY => {
                 unimplemented!(
                     "I have not yet encountered this return code but it is listed as a valid return code"
@@ -120,12 +122,13 @@ impl Api {
             .await?;
 
         match response.status() {
-            StatusCode::OK => serde_json::from_str(&response.text().await?)
-                .map_err(validate::ValidateError::SerdeJson),
-            StatusCode::UNAUTHORIZED => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
-            }
+            StatusCode::OK => response
+                .json()
+                .await
+                .map_err(validate::ValidateError::Reqwest),
+            StatusCode::UNAUTHORIZED => Err(validate::ValidateError::InvalidAPIKey(
+                response.json().await?,
+            )),
             StatusCode::UNPROCESSABLE_ENTITY => {
                 unimplemented!(
                     "I have not yet encountered this return code but it is listed as a valid return code"
@@ -155,13 +158,9 @@ impl Api {
                 id,
             ))),
             StatusCode::UNAUTHORIZED => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
+                Err(response.json::<err::InvalidAPIKeyError>().await?.into())
             }
-            StatusCode::NOT_FOUND => {
-                let err: err::ModNotFoundError = serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
-            }
+            StatusCode::NOT_FOUND => Err(response.json::<err::ModNotFoundError>().await?.into()),
             _ => unreachable!("The only four documented return codes are 200, 201, 404, and 401"),
         }
     }
@@ -187,9 +186,7 @@ impl Api {
         match response.status() {
             StatusCode::OK => Ok(()),
             StatusCode::NOT_FOUND => {
-                let err: err::UntrackedOrInvalidMod =
-                    serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
+                Err(response.json::<err::UntrackedOrInvalidMod>().await?.into())
             }
             _ => unreachable!("The only two documented return codes are 200 and 404"),
         }
@@ -203,13 +200,8 @@ impl Api {
             .await?;
 
         match response.status() {
-            StatusCode::OK => {
-                serde_json::from_str(&response.text().await?).map_err(get::GameModError::SerdeJson)
-            }
-            StatusCode::NOT_FOUND => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
-            }
+            StatusCode::OK => response.json().await.map_err(get::GameModError::Reqwest),
+            StatusCode::NOT_FOUND => Err(response.json::<err::InvalidAPIKeyError>().await?.into()),
             StatusCode::UNPROCESSABLE_ENTITY => {
                 unimplemented!(
                     "I have not yet encountered this return code but it is listed as a valid return code"
@@ -227,13 +219,8 @@ impl Api {
             .await?;
 
         match response.status() {
-            StatusCode::OK => {
-                serde_json::from_str(&response.text().await?).map_err(get::GameModError::SerdeJson)
-            }
-            StatusCode::NOT_FOUND => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
-            }
+            StatusCode::OK => response.json().await.map_err(get::GameModError::Reqwest),
+            StatusCode::NOT_FOUND => Err(response.json::<err::InvalidAPIKeyError>().await?.into()),
             StatusCode::UNPROCESSABLE_ENTITY => {
                 unimplemented!(
                     "I have not yet encountered this return code but it is listed as a valid return code"
@@ -265,13 +252,8 @@ impl Api {
             .await?;
 
         match response.status() {
-            StatusCode::OK => {
-                serde_json::from_str(&response.text().await?).map_err(get::GameModError::SerdeJson)
-            }
-            StatusCode::NOT_FOUND => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
-            }
+            StatusCode::OK => response.json().await.map_err(get::GameModError::Reqwest),
+            StatusCode::NOT_FOUND => Err(response.json::<err::InvalidAPIKeyError>().await?.into()),
             StatusCode::UNPROCESSABLE_ENTITY => {
                 unimplemented!(
                     "I have not yet encountered this return code but it is listed as a valid return code"
@@ -306,13 +288,8 @@ impl Api {
             .await?;
 
         match response.status() {
-            StatusCode::OK => {
-                serde_json::from_str(&response.text().await?).map_err(get::GameModError::SerdeJson)
-            }
-            StatusCode::NOT_FOUND => {
-                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
-                Err(err.into())
-            }
+            StatusCode::OK => response.json().await.map_err(get::GameModError::Reqwest),
+            StatusCode::NOT_FOUND => Err(response.json::<err::InvalidAPIKeyError>().await?.into()),
             StatusCode::UNPROCESSABLE_ENTITY => {
                 unimplemented!(
                     "I have not yet encountered this return code but it is listed as a valid return code"
