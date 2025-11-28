@@ -36,6 +36,18 @@ impl Display for UntrackedOrInvalidMod {
     }
 }
 
+#[derive(Debug, Error, Serialize, Deserialize)]
+pub struct InvalidGame {
+    pub code: u64,
+    pub message: String,
+}
+
+impl Display for InvalidGame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
 pub mod validate {
     use thiserror::Error;
 
@@ -78,6 +90,24 @@ pub mod post {
         InvalidAPIKey(#[from] InvalidAPIKeyError),
         #[error(transparent)]
         ModNotFound(#[from] ModNotFoundError),
+    }
+}
+
+pub mod get {
+    use thiserror::Error;
+
+    use crate::err::{InvalidAPIKeyError, InvalidGame};
+
+    #[derive(Debug, Error)]
+    pub enum GameModError {
+        #[error(transparent)]
+        Reqwest(#[from] reqwest::Error),
+        #[error(transparent)]
+        SerdeJson(#[from] serde_json::Error),
+        #[error(transparent)]
+        InvalidAPIKey(#[from] InvalidAPIKeyError),
+        #[error(transparent)]
+        InvalidGameID(#[from] InvalidGame),
     }
 }
 

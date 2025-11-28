@@ -1,6 +1,10 @@
 use std::{collections::HashMap, fmt::Display};
 
-use serde::{Deserialize, Serialize};
+use reqwest::Url;
+use serde::{
+    Deserialize, Serialize,
+    de::{self, Visitor},
+};
 use time::{OffsetDateTime, UtcDateTime};
 
 #[macro_export]
@@ -173,4 +177,106 @@ pub enum EndorseStatus {
     Endorsed,
     #[serde(untagged)]
     NotEndorsed,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameId {
+    id: u64,
+    name: String,
+    forum_url: Url,
+    nexusmods_url: Url,
+    genre: String,
+    file_count: u64,
+    domain_name: String,
+    #[serde(with = "time::serde::timestamp")]
+    approved_date: OffsetDateTime,
+    file_views: u64,
+    authors: u64,
+    file_endorsements: u64,
+    mods: u64,
+    categories: Vec<GameCategory>,
+}
+
+impl GameId {
+    /// Get the parent category for a given category.
+    pub fn trace_parent_category(&self, category: &GameCategory) -> Option<&GameCategory> {
+        let id = &category.parent_category;
+        self.categories.iter().find(|cat| match id {
+            Category::Category(n) => *n == cat.category_id,
+            Category::None => false,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameCategory {
+    category_id: u64,
+    name: String,
+    parent_category: Category,
+}
+
+#[derive(Debug)]
+pub enum Category {
+    Category(u64),
+    None,
+}
+
+impl<'de> Deserialize<'de> for Category {
+    fn deserialize<D>(de: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct CategoryVisitor;
+
+        impl<'de> Visitor<'de> for CategoryVisitor {
+            type Value = Category;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "a number or false")
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Category::Category(v))
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                if v.is_negative() {
+                    Err(de::Error::custom("negative number not allowed"))
+                } else {
+                    Ok(Category::Category(v as u64))
+                }
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if !v {
+                    Ok(Category::None)
+                } else {
+                    Err(de::Error::custom("`true` not allowed"))
+                }
+            }
+        }
+
+        de.deserialize_any(CategoryVisitor)
+    }
+}
+
+impl Serialize for Category {
+    fn serialize<S>(&self, se: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match *self {
+            Self::Category(n) => se.serialize_u64(n),
+            Self::None => se.serialize_bool(false),
+        }
+    }
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use reqwest::{Client, ClientBuilder, RequestBuilder, StatusCode, header::HeaderMap};
 
 use crate::{
-    err::{self, delete, post, validate}, nexus_joiner, request::{Endorsements, ModId, TrackedModsRaw, Validate}, VERSION
+    err::{self, delete, post, validate, get}, nexus_joiner, request::{Endorsements, GameId, ModId, TrackedModsRaw, Validate}, VERSION
 };
 
 /// Root level API handler.
@@ -181,6 +181,29 @@ impl Api {
                 Err(err.into())
             }
             _ => unreachable!("The only two documented return codes are 200 and 404"),
+        }
+    }
+
+    // TODO: `v1/games`
+
+    pub async fn game(&self, game: &str) -> Result<GameId, get::GameModError> {
+        let response = self
+            .get_api(VERSION, &format!("games/{game}"), self.key())
+            .await?;
+
+        match response.status() {
+            StatusCode::OK => serde_json::from_str(&response.text().await?)
+                .map_err(get::GameModError::SerdeJson),
+            StatusCode::NOT_FOUND => {
+                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
+                Err(err.into())
+            }
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                unimplemented!(
+                    "I have not yet encountered this return code but it is listed as a valid return code"
+                );
+            }
+            _ => unreachable!("The only three documented return codes are 200, 404, and 422"),
         }
     }
 }
