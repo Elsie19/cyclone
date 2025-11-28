@@ -456,6 +456,10 @@ impl ModFile {
         self.uid
     }
 
+    pub const fn file_id(&self) -> u64 {
+        self.file_id
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }

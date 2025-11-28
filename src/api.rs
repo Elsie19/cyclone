@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Client, ClientBuilder, RequestBuilder, StatusCode};
 
 use crate::{
-    err::{self, delete, get, post, validate}, nexus_joiner, request::{CategoryName, Endorsements, GameId, ModFiles, ModId, TrackedModsRaw, Validate}, VERSION
+    err::{self, delete, get, post, validate}, nexus_joiner, request::{CategoryName, Endorsements, GameId, ModFile, ModFiles, ModId, TrackedModsRaw, Validate}, VERSION
 };
 
 /// Root level API handler.
@@ -229,11 +229,32 @@ impl Api {
     }
 
     /// Based on a game and a [`ModId`], get data about the download files the mod provides.
-    // TODO: Add category.
     pub async fn mod_files<S: Into<ModId>>(&self, game: &str, mod_id: S, category: Option<CategoryName>) -> Result<ModFiles, get::GameModError> {
         let mod_id = mod_id.into();
         let response = self
             .get_api(VERSION, &format!("games/{game}/mods/{mod_id}/files"), &category.iter().map(|c| ("category", c.to_header_str())).collect::<Vec<_>>())
+            .await?;
+
+        match response.status() {
+            StatusCode::OK => serde_json::from_str(&response.text().await?)
+                .map_err(get::GameModError::SerdeJson),
+            StatusCode::NOT_FOUND => {
+                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
+                Err(err.into())
+            }
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                unimplemented!(
+                    "I have not yet encountered this return code but it is listed as a valid return code"
+                );
+            }
+            _ => unreachable!("The only three documented return codes are 200, 404, and 422"),
+        }
+    }
+
+    pub async fn mod_file<S: Into<ModId>>(&self, game: &str, mod_id: S, file_id: u64) -> Result<ModFile, get::GameModError> {
+        let mod_id = mod_id.into();
+        let response = self
+            .get_api(VERSION, &format!("games/{game}/mods/{mod_id}/files/{file_id}"), &[])
             .await?;
 
         match response.status() {
