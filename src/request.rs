@@ -29,9 +29,33 @@ pub struct Validate {
     #[serde(alias = "is_supporter?")]
     is_supporter_q: bool,
     email: String,
-    profile_url: String,
+    profile_url: Url,
     is_premium: bool,
     is_supporter: bool,
+}
+
+impl Validate {
+    pub const fn is_premium(&self) -> bool {
+        // I think?
+        self.is_premium_q && self.is_premium
+    }
+
+    pub const fn is_supporter(&self) -> bool {
+        // I think?
+        self.is_supporter_q && self.is_supporter
+    }
+
+    pub fn email(&self) -> &str {
+        &self.email
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn url(&self) -> &Url {
+        &self.profile_url
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -198,6 +222,54 @@ pub struct GameId {
 }
 
 impl GameId {
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn pretty_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn forum(&self) -> &Url {
+        &self.forum_url
+    }
+
+    pub fn page(&self) -> &Url {
+        &self.nexusmods_url
+    }
+
+    pub fn genre(&self) -> &str {
+        &self.genre
+    }
+
+    pub fn domain_name(&self) -> &str {
+        &self.domain_name
+    }
+
+    pub fn approved_date(&self) -> UtcDateTime {
+        self.approved_date.to_utc()
+    }
+
+    pub const fn file_views(&self) -> u64 {
+        self.file_views
+    }
+
+    pub const fn authors(&self) -> u64 {
+        self.authors
+    }
+
+    pub const fn endorsements(&self) -> u64 {
+        self.file_endorsements
+    }
+
+    pub const fn mods(&self) -> u64 {
+        self.mods
+    }
+
+    pub fn categories(&self) -> &[GameCategory] {
+        &self.categories
+    }
+
     /// Get the parent category for a given category.
     pub fn trace_parent_category(&self, category: &GameCategory) -> Option<&GameCategory> {
         let id = &category.parent_category;
