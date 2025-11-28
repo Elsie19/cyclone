@@ -16,10 +16,12 @@ impl Api {
     /// Create a new wrapper with a [personal API key](https://next.nexusmods.com/settings/api-keys).
     pub fn new<S: Into<String>>(key: S) -> Self {
         let key = key.into();
-        let mut headers = HeaderMap::new();
-        headers.insert("apikey", key.parse().unwrap());
-        headers.insert("accept", "application/json".parse().unwrap());
-        let client = ClientBuilder::new().default_headers(headers);
+        let client = ClientBuilder::new().default_headers({
+            let mut h = HeaderMap::new();
+            h.insert("apikey", key.parse().unwrap());
+            h.insert("accept", HeaderValue::from_static("application/json"));
+            h
+        });
         Self {
             key,
             client: client.build().expect("oops"),
