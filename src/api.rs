@@ -15,7 +15,9 @@ use crate::{
     },
 };
 
-/// Root level API handler.
+/// Top level API handler.
+///
+/// All network calls are handled through here.
 pub struct Api {
     key: String,
     client: Client,
@@ -23,6 +25,18 @@ pub struct Api {
 
 impl Api {
     /// Create a new wrapper with a [personal API key](https://next.nexusmods.com/settings/api-keys).
+    ///
+    /// Ideally should be checked with [`Api::validate`] right after:
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cyclone::Api;
+    /// # tokio_test::block_on(async {
+    /// let api = Api::new("here is my custom key");
+    /// assert!(api.validate().await.is_ok());
+    /// # })
+    /// ```
     pub fn new<S: Into<String>>(key: S) -> Self {
         let key = key.into();
         let client = ClientBuilder::new().default_headers({
@@ -65,6 +79,19 @@ impl Api {
 /// - [x] `GET`    [`v1/user/endorsements`](`Api::endorsements`)
 impl Api {
     /// Validate API key and retrieve user details.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use cyclone::{Api, err::validate::ValidateError};
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), ValidateError> {
+    /// let api = Api::new("...");
+    /// // I am a premium user!
+    /// assert!(api.validate().await?.is_premium());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn validate(&self) -> Result<Validate, validate::ValidateError> {
         let response = self
             .build(Method::GET, VERSION, &["users", "validate"], &[])
