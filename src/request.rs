@@ -1,4 +1,7 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
 use reqwest::Url;
 use serde::{
@@ -64,6 +67,16 @@ pub struct ModEntry {
     domain_name: String,
 }
 
+impl ModEntry {
+    pub const fn id(&self) -> ModId {
+        self.mod_id
+    }
+
+    pub fn domain_name(&self) -> &str {
+        &self.domain_name
+    }
+}
+
 /// A mod ID is a thin wrapper for a `u64`, but everywhere that you see [`ModId`], you can assume
 /// that it is a valid NexusMods mod ID; it should always be valid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -111,6 +124,10 @@ pub struct TrackedModsRaw {
 }
 
 impl TrackedModsRaw {
+    pub fn mods(&self) -> &[ModEntry] {
+        &self.mods
+    }
+
     /// Convert the faithful representation retrieved from NexusMods into a more rustic and
     /// idiomatic variant.
     pub fn into_mods(self) -> TrackedMods {
@@ -131,8 +148,13 @@ pub struct TrackedMods {
 
 impl TrackedMods {
     /// Get a list of [`ModId`]s from a game name.
-    pub fn from_game(&self, name: &str) -> Option<&[ModId]> {
+    pub fn get_game(&self, name: &str) -> Option<&[ModId]> {
         self.mods.get(name).map(|v| &**v)
+    }
+
+    /// Get all game names.
+    pub fn games(&self) -> impl Iterator<Item = &str> {
+        self.mods.keys().map(String::as_str)
     }
 }
 
@@ -350,5 +372,212 @@ impl Serialize for Category {
             Self::Category(n) => se.serialize_u64(n),
             Self::None => se.serialize_bool(false),
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModFiles {
+    files: Vec<ModFile>,
+    file_updates: Vec<FileUpdate>,
+}
+
+impl ModFiles {
+    pub fn iter_files(&self) -> impl Iterator<Item = &ModFile> {
+        self.files.iter()
+    }
+
+    pub fn iter_updates(&self) -> impl Iterator<Item = &FileUpdate> {
+        self.file_updates.iter()
+    }
+
+    pub fn into_iter_files(self) -> impl IntoIterator<Item = ModFile> {
+        self.files.into_iter()
+    }
+
+    pub fn into_iter_updates(self) -> impl IntoIterator<Item = FileUpdate> {
+        self.file_updates.into_iter()
+    }
+
+    /// Deduplicate entries based on a condition.
+    ///
+    /// Mostly useful for when you want to just get a single throwaway instance of [`ModFile`],
+    /// likely for printing out something pertaining to the mod as a whole, rather than every file
+    /// located inside it, such as a loop to print what names of mods the user endorses.
+    pub fn dedup<F>(&self, same: F) -> Vec<ModFile>
+    where
+        F: Fn(&ModFile, &ModFile) -> bool,
+    {
+        let mut out = vec![];
+
+        'outer: for x in &self.files {
+            for y in &out {
+                if same(x, y) {
+                    continue 'outer;
+                }
+            }
+            out.push(x.clone());
+        }
+
+        out
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModFile {
+    id: Vec<u64>,
+    uid: u64,
+    file_id: u64,
+    name: String,
+    version: String,
+    category_id: u64,
+    category_name: CategoryName,
+    is_primary: bool,
+    size: u64,
+    file_name: String,
+    #[serde(with = "time::serde::timestamp")]
+    uploaded_timestamp: OffsetDateTime,
+    #[serde(with = "time::serde::iso8601")]
+    uploaded_time: OffsetDateTime,
+    mod_version: String,
+    external_virus_scan_url: Option<Url>,
+    description: Option<String>,
+    size_kb: u64,
+    size_in_bytes: u64,
+    changelog_html: Option<String>,
+    content_preview_link: Url,
+}
+
+impl ModFile {
+    pub fn ids(&self) -> &[u64] {
+        &self.id
+    }
+
+    pub const fn uid(&self) -> u64 {
+        self.uid
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub const fn category_id(&self) -> u64 {
+        self.category_id
+    }
+
+    pub const fn category_name(&self) -> CategoryName {
+        self.category_name
+    }
+
+    pub const fn is_primary(&self) -> bool {
+        self.is_primary
+    }
+
+    /// Appears to be in kilobytes.
+    pub const fn size(&self) -> u64 {
+        self.size
+    }
+
+    pub fn file_name(&self) -> &str {
+        &self.file_name
+    }
+
+    pub fn uploaded_timestamp(&self) -> UtcDateTime {
+        self.uploaded_timestamp.to_utc()
+    }
+
+    pub fn uploaded_timestamp_epoch(&self) -> i64 {
+        self.uploaded_timestamp.unix_timestamp()
+    }
+
+    pub fn uploaded_time(&self) -> UtcDateTime {
+        self.uploaded_time.to_utc()
+    }
+
+    pub fn mod_version(&self) -> &str {
+        &self.mod_version
+    }
+
+    pub fn virus_scan_url(&self) -> Option<&Url> {
+        self.external_virus_scan_url.as_ref()
+    }
+
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    pub const fn size_kb(&self) -> u64 {
+        self.size_kb
+    }
+
+    pub const fn size_bytes(&self) -> u64 {
+        self.size_in_bytes
+    }
+
+    pub fn changelog(&self) -> Option<&str> {
+        self.changelog_html.as_deref()
+    }
+
+    pub fn content_preview(&self) -> &Url {
+        &self.content_preview_link
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CategoryName {
+    Main,
+    Update,
+    Optional,
+    OldVersion,
+    Miscellaneous,
+    Archived,
+}
+
+impl CategoryName {
+    pub(crate) const fn to_header_str(&self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Update => "update",
+            Self::Optional => "optional",
+            Self::OldVersion => "old_version",
+            Self::Miscellaneous => "miscellaneous",
+            Self::Archived => "archived",
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileUpdate {
+    old_file_id: u64,
+    new_file_id: u64,
+    old_file_name: String,
+    new_file_name: String,
+    #[serde(with = "time::serde::timestamp")]
+    uploaded_timestamp: OffsetDateTime,
+    #[serde(with = "time::serde::iso8601")]
+    uploaded_time: OffsetDateTime,
+}
+
+impl FileUpdate {
+    /// Return the old and new ID.
+    pub const fn ids(&self) -> (u64, u64) {
+        (self.old_file_id, self.new_file_id)
+    }
+
+    /// Return the old and new names.
+    pub fn names(&self) -> (&str, &str) {
+        (&self.old_file_name, &self.new_file_name)
+    }
+
+    pub fn uploaded_timestamp(&self) -> UtcDateTime {
+        self.uploaded_timestamp.to_utc()
+    }
+
+    pub fn uploaded_time(&self) -> UtcDateTime {
+        self.uploaded_time.to_utc()
     }
 }

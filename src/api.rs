@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use reqwest::{Client, ClientBuilder, RequestBuilder, StatusCode, header::HeaderMap};
+use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Client, ClientBuilder, RequestBuilder, StatusCode};
 
 use crate::{
-    err::{self, delete, post, validate, get}, nexus_joiner, request::{Endorsements, GameId, ModId, TrackedModsRaw, Validate}, VERSION
+    err::{self, delete, get, post, validate}, nexus_joiner, request::{CategoryName, Endorsements, GameId, ModFiles, ModId, TrackedModsRaw, Validate}, VERSION
 };
 
 /// Root level API handler.
@@ -18,6 +18,7 @@ impl Api {
         let key = key.into();
         let mut headers = HeaderMap::new();
         headers.insert("apikey", key.parse().unwrap());
+        headers.insert("accept", "application/json".parse().unwrap());
         let client = ClientBuilder::new().default_headers(headers);
         Self {
             key,
@@ -33,33 +34,31 @@ impl Api {
         &self,
         ver: &str,
         slug: &str,
-        key: &str,
+        extra_headers: &[(&str, &str)],
     ) -> Result<reqwest::Response, reqwest::Error> {
         self.client
             .get(nexus_joiner!(ver, slug))
-            .header("accept", "application/json")
-            .header("apikey", key)
+            .headers(extra_headers.iter().map(|(k, v)|
+                (HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                 HeaderValue::from_str(v).unwrap())
+            ).collect())
             .send()
             .await
     }
 
-    fn post_api(&self, ver: &str, slug: &str, key: &str) -> RequestBuilder {
+    fn post_api(&self, ver: &str, slug: &str) -> RequestBuilder {
         self.client
             .post(nexus_joiner!(ver, slug))
-            .header("accept", "application/json")
-            .header("apikey", key)
     }
 
-    fn delete_api(&self, ver: &str, slug: &str, key: &str) -> RequestBuilder {
+    fn delete_api(&self, ver: &str, slug: &str) -> RequestBuilder {
         self.client
             .delete(nexus_joiner!(ver, slug))
-            .header("accept", "application/json")
-            .header("apikey", key)
     }
 
     /// Validate API key and retrieve user details.
     pub async fn validate(&self) -> Result<Validate, validate::ValidateError> {
-        let response = self.get_api(VERSION, "users/validate", self.key()).await?;
+        let response = self.get_api(VERSION, "users/validate", &[]).await?;
 
         match response.status() {
             StatusCode::OK => serde_json::from_str(&response.text().await?)
@@ -77,9 +76,10 @@ impl Api {
         }
     }
 
+    /// Get a list of mods the user has endorsed.
     pub async fn endorsements(&self) -> Result<Endorsements, validate::ValidateError> {
         let response = self
-            .get_api(VERSION, "user/endorsements", self.key())
+            .get_api(VERSION, "user/endorsements", &[])
             .await?;
 
         match response.status() {
@@ -105,7 +105,7 @@ impl Api {
     /// [`crate::request::TrackedModsRaw::into_mods`].
     pub async fn tracked_mods(&self) -> Result<TrackedModsRaw, validate::ValidateError> {
         let response = self
-            .get_api(VERSION, "user/tracked_mods", self.key())
+            .get_api(VERSION, "user/tracked_mods", &[])
             .await?;
 
         match response.status() {
@@ -132,7 +132,7 @@ impl Api {
     ) -> Result<post::PostModStatus, post::TrackModError> {
         let id = id.into();
         let response = self
-            .post_api(VERSION, "user/tracked_mods", self.key())
+            .post_api(VERSION, "user/tracked_mods")
             .query(&[("domain_name", game)])
             .form(&HashMap::from([("mod_id", id)]))
             .send()
@@ -167,7 +167,7 @@ impl Api {
     ) -> Result<(), delete::DeleteModError> {
         let id = id.into();
         let response = self
-            .delete_api(VERSION, "user/tracked_mods", self.key())
+            .delete_api(VERSION, "user/tracked_mods")
             .query(&[("domain_name", game)])
             .form(&HashMap::from([("mod_id", id)]))
             .send()
@@ -184,9 +184,10 @@ impl Api {
         }
     }
 
+    /// Get a list of all games tracked by NexusMods.
     pub async fn games(&self) -> Result<Vec<GameId>, get::GameModError> {
         let response = self
-            .get_api(VERSION, "games", self.key())
+            .get_api(VERSION, "games", &[])
             .await?;
 
         match response.status() {
@@ -205,9 +206,34 @@ impl Api {
         }
     }
 
+    /// Get information about a single game.
     pub async fn game(&self, game: &str) -> Result<GameId, get::GameModError> {
         let response = self
-            .get_api(VERSION, &format!("games/{game}"), self.key())
+            .get_api(VERSION, &format!("games/{game}"), &[])
+            .await?;
+
+        match response.status() {
+            StatusCode::OK => serde_json::from_str(&response.text().await?)
+                .map_err(get::GameModError::SerdeJson),
+            StatusCode::NOT_FOUND => {
+                let err: err::InvalidAPIKeyError = serde_json::from_str(&response.text().await?)?;
+                Err(err.into())
+            }
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                unimplemented!(
+                    "I have not yet encountered this return code but it is listed as a valid return code"
+                );
+            }
+            _ => unreachable!("The only three documented return codes are 200, 404, and 422"),
+        }
+    }
+
+    /// Based on a game and a [`ModId`], get data about the download files the mod provides.
+    // TODO: Add category.
+    pub async fn mod_files<S: Into<ModId>>(&self, game: &str, mod_id: S, category: Option<CategoryName>) -> Result<ModFiles, get::GameModError> {
+        let mod_id = mod_id.into();
+        let response = self
+            .get_api(VERSION, &format!("games/{game}/mods/{mod_id}/files"), &category.iter().map(|c| ("category", c.to_header_str())).collect::<Vec<_>>())
             .await?;
 
         match response.status() {
