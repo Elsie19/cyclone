@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Display,
-};
+use std::{collections::HashMap, fmt::Display};
 
 use reqwest::Url;
 use serde::{
@@ -12,14 +9,25 @@ use time::{OffsetDateTime, UtcDateTime};
 
 #[macro_export]
 macro_rules! nexus_joiner {
-    ($ver:expr, $slug:expr) => {
-        reqwest::Url::parse("https://api.nexusmods.com")
-            .expect("Could not parse URL")
+    ($ver:expr, $components:expr) => {{
+        let mut url = reqwest::Url::parse("https://api.nexusmods.com")
+            .expect("Could not parse URL (very fatal!)")
             .join(&format!("{}/", $ver))
-            .expect("Could not join version")
-            .join(&format!("{}.json", $slug))
-            .expect("Could not join slug")
-    };
+            .expect("Could not join version!");
+        let mut it = $components.into_iter().peekable();
+        while let Some(comp) = it.next() {
+            if it.peek().is_none() {
+                url = url
+                    .join(&format!("{}.json", comp))
+                    .expect("Could not join {comp}");
+            } else {
+                url = url
+                    .join(&format!("{}/", comp))
+                    .expect("Could not join {comp}");
+            }
+        }
+        url
+    }};
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,6 +97,10 @@ impl ModId {
     /// Get the underlying `u64`.
     pub const fn id(&self) -> u64 {
         self.id
+    }
+
+    pub fn to_string(self) -> String {
+        self.id.to_string()
     }
 
     /// Secret teehee. Use this internally when you verify that a given u64 actually is a valid

@@ -44,11 +44,11 @@ impl Api {
         &self,
         method: Method,
         ver: &str,
-        slug: &str,
+        slugs: &[&str],
         extra_headers: &[(&'static str, &str)],
     ) -> RequestBuilder {
         self.client
-            .request(method, nexus_joiner!(ver, slug))
+            .request(method, nexus_joiner!(ver, slugs))
             .headers(
                 extra_headers
                     .iter()
@@ -65,7 +65,7 @@ impl Api {
     /// Validate API key and retrieve user details.
     pub async fn validate(&self) -> Result<Validate, validate::ValidateError> {
         let response = self
-            .build(Method::GET, VERSION, "users/validate", &[])
+            .build(Method::GET, VERSION, &["users", "validate"], &[])
             .send()
             .await?;
 
@@ -88,7 +88,7 @@ impl Api {
     /// Get a list of mods the user has endorsed.
     pub async fn endorsements(&self) -> Result<Endorsements, validate::ValidateError> {
         let response = self
-            .build(Method::GET, VERSION, "user/endorsements", &[])
+            .build(Method::GET, VERSION, &["user", "endorsements"], &[])
             .send()
             .await?;
 
@@ -115,7 +115,7 @@ impl Api {
     /// [`crate::request::TrackedModsRaw::into_mods`].
     pub async fn tracked_mods(&self) -> Result<TrackedModsRaw, validate::ValidateError> {
         let response = self
-            .build(Method::GET, VERSION, "user/tracked_mods", &[])
+            .build(Method::GET, VERSION, &["user", "tracked_mods"], &[])
             .send()
             .await?;
 
@@ -143,7 +143,7 @@ impl Api {
     ) -> Result<post::PostModStatus, post::TrackModError> {
         let id = id.into();
         let response = self
-            .build(Method::POST, VERSION, "user/tracked_mods", &[])
+            .build(Method::POST, VERSION, &["user", "tracked_mods"], &[])
             .query(&[("domain_name", game)])
             .form(&HashMap::from([("mod_id", id)]))
             .send()
@@ -178,7 +178,7 @@ impl Api {
     ) -> Result<(), delete::DeleteModError> {
         let id = id.into();
         let response = self
-            .build(Method::DELETE, VERSION, "user/tracked_mods", &[])
+            .build(Method::DELETE, VERSION, &["user", "tracked_mods"], &[])
             .query(&[("domain_name", game)])
             .form(&HashMap::from([("mod_id", id)]))
             .send()
@@ -198,7 +198,7 @@ impl Api {
     /// Get a list of all games tracked by NexusMods.
     pub async fn games(&self) -> Result<Vec<GameId>, get::GameModError> {
         let response = self
-            .build(Method::GET, VERSION, "games", &[])
+            .build(Method::GET, VERSION, &["games"], &[])
             .send()
             .await?;
 
@@ -222,7 +222,7 @@ impl Api {
     /// Get information about a single game.
     pub async fn game(&self, game: &str) -> Result<GameId, get::GameModError> {
         let response = self
-            .build(Method::GET, VERSION, &format!("games/{game}"), &[])
+            .build(Method::GET, VERSION, &["games", game], &[])
             .send()
             .await?;
 
@@ -255,7 +255,7 @@ impl Api {
             .build(
                 Method::GET,
                 VERSION,
-                &format!("games/{game}/mods/{mod_id}/files"),
+                &["games", game, "mods", mod_id.to_string().as_str(), "files"],
                 &category
                     .iter()
                     .map(|c| ("category", c.to_header_str()))
@@ -292,7 +292,14 @@ impl Api {
             .build(
                 Method::GET,
                 VERSION,
-                &format!("games/{game}/mods/{mod_id}/files/{file_id}"),
+                &[
+                    "games",
+                    game,
+                    "mods",
+                    mod_id.to_string().as_str(),
+                    "files",
+                    file_id.to_string().as_str(),
+                ],
                 &[],
             )
             .send()
