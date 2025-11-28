@@ -542,7 +542,7 @@ pub enum CategoryName {
 }
 
 impl CategoryName {
-    pub(crate) const fn to_header_str(&self) -> &'static str {
+    pub(crate) const fn to_header_str(self) -> &'static str {
         match self {
             Self::Main => "main",
             Self::Update => "update",
@@ -583,5 +583,53 @@ impl FileUpdate {
 
     pub fn uploaded_time(&self) -> UtcDateTime {
         self.uploaded_time.to_utc()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PreviewFileRoot {
+    children: Vec<PreviewFileChildren>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum PreviewFileChildren {
+    #[serde(rename = "directory")]
+    Directory {
+        path: String,
+        name: String,
+        children: Vec<PreviewFileChildren>,
+    },
+    #[serde(rename = "file")]
+    File {
+        path: String,
+        name: String,
+        size: String,
+    },
+}
+
+impl PreviewFileRoot {
+    /// Get all the files in the preview.
+    pub fn files(&self) -> Vec<&PreviewFileChildren> {
+        fn gather<'a>(node: &'a PreviewFileChildren, out: &mut Vec<&'a PreviewFileChildren>) {
+            match node {
+                PreviewFileChildren::Directory { children, .. } => {
+                    for child in children {
+                        gather(child, out);
+                    }
+                }
+                PreviewFileChildren::File { .. } => {
+                    out.push(node);
+                }
+            }
+        }
+
+        let mut out = vec![];
+
+        for child in &self.children {
+            gather(child, &mut out);
+        }
+
+        out
     }
 }
