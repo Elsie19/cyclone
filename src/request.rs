@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, time::Duration};
+use std::{collections::HashMap, fmt::Display, path::PathBuf, time::Duration};
 
 use reqwest::Url;
 use serde::{
@@ -213,7 +213,7 @@ impl Endorsement {
         self.version.as_deref()
     }
 
-    pub fn date(&self) -> UtcDateTime {
+    pub const fn date(&self) -> UtcDateTime {
         self.date.to_utc()
     }
 
@@ -276,7 +276,7 @@ impl GameId {
         &self.domain_name
     }
 
-    pub fn approved_date(&self) -> UtcDateTime {
+    pub const fn approved_date(&self) -> UtcDateTime {
         self.approved_date.to_utc()
     }
 
@@ -497,7 +497,7 @@ impl ModFile {
         &self.file_name
     }
 
-    pub fn uploaded_timestamp(&self) -> UtcDateTime {
+    pub const fn uploaded_timestamp(&self) -> UtcDateTime {
         self.uploaded_timestamp.to_utc()
     }
 
@@ -505,7 +505,7 @@ impl ModFile {
         self.uploaded_timestamp.unix_timestamp()
     }
 
-    pub fn uploaded_time(&self) -> UtcDateTime {
+    pub const fn uploaded_time(&self) -> UtcDateTime {
         self.uploaded_time.to_utc()
     }
 
@@ -585,11 +585,11 @@ impl FileUpdate {
         (&self.old_file_name, &self.new_file_name)
     }
 
-    pub fn uploaded_timestamp(&self) -> UtcDateTime {
+    pub const fn uploaded_timestamp(&self) -> UtcDateTime {
         self.uploaded_timestamp.to_utc()
     }
 
-    pub fn uploaded_time(&self) -> UtcDateTime {
+    pub const fn uploaded_time(&self) -> UtcDateTime {
         self.uploaded_time.to_utc()
     }
 }
@@ -614,6 +614,14 @@ pub enum PreviewFileChildren {
         name: String,
         size: String,
     },
+}
+
+impl PreviewFileChildren {
+    pub fn into_pathbuf(self) -> PathBuf {
+        match self {
+            Self::File { path, .. } | Self::Directory { path, .. } => PathBuf::from(path),
+        }
+    }
 }
 
 impl PreviewFileRoot {
@@ -656,11 +664,11 @@ impl ModUpdated {
         self.mod_id
     }
 
-    pub fn last_updated(&self) -> UtcDateTime {
+    pub const fn last_updated(&self) -> UtcDateTime {
         self.latest_file_update.to_utc()
     }
 
-    pub fn last_activity(&self) -> UtcDateTime {
+    pub const fn last_activity(&self) -> UtcDateTime {
         self.latest_mod_activity.to_utc()
     }
 }
