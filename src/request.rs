@@ -1,8 +1,8 @@
-use std::{collections::HashMap, fmt::Display, path::PathBuf, time::Duration};
+use std::{collections::HashMap, fmt::Display, ops::Deref, path::PathBuf, time::Duration};
 
 use reqwest::Url;
 use serde::{
-    Deserialize, Serialize,
+    Deserialize, Serialize, Serializer,
     de::{self, Visitor},
 };
 use time::{OffsetDateTime, UtcDateTime};
@@ -30,6 +30,48 @@ macro_rules! nexus_joiner {
     }};
 }
 
+#[derive(Clone, Copy)]
+pub enum Limited {
+    Hourly,
+    Daily,
+}
+
+#[derive(Clone, Copy)]
+pub struct RateLimiting {
+    // Limited to 2,500 requests per 24 hours.
+    pub(crate) hourly_limit: u16,
+    pub(crate) hourly_remaining: u16,
+    pub(crate) hourly_reset: OffsetDateTime,
+
+    pub(crate) daily_limit: u16,
+    pub(crate) daily_remaining: u16,
+    pub(crate) daily_reset: OffsetDateTime,
+}
+
+impl RateLimiting {
+    pub const fn limit(&self, limit: Limited) -> u16 {
+        match limit {
+            Limited::Hourly => self.hourly_limit,
+            Limited::Daily => self.daily_limit,
+        }
+    }
+
+    pub const fn remaining(&self, limit: Limited) -> u16 {
+        match limit {
+            Limited::Hourly => self.hourly_remaining,
+            Limited::Daily => self.daily_remaining,
+        }
+    }
+
+    pub const fn reset(&self, limit: Limited) -> UtcDateTime {
+        match limit {
+            Limited::Hourly => self.hourly_reset.to_utc(),
+            Limited::Daily => self.daily_reset.to_utc(),
+        }
+    }
+}
+
+/// Validation object for a given user.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Validate {
     user_id: usize,
@@ -46,11 +88,16 @@ pub struct Validate {
 }
 
 impl Validate {
+    /// Is the user a premium user?
     pub const fn is_premium(&self) -> bool {
         // I think?
         self.is_premium_q && self.is_premium
     }
 
+    /// Is the user a supporter?
+    ///
+    /// In order for this to be `true`, the user must've bought premium at any point in time, even
+    /// if they currently do not have it.
     pub const fn is_supporter(&self) -> bool {
         // I think?
         self.is_supporter_q && self.is_supporter
@@ -64,6 +111,10 @@ impl Validate {
         &self.name
     }
 
+    /// URL to the user's NexusMods' avatar.
+    ///
+    /// # Warning
+    /// This is *not* the path to the user's home page!
     pub fn url(&self) -> &Url {
         &self.profile_url
     }
@@ -85,8 +136,10 @@ impl ModEntry {
     }
 }
 
-/// A mod ID is a thin wrapper for a `u64`, but everywhere that you see [`ModId`], you can assume
-/// that it is a valid NexusMods mod ID; it should always be valid.
+/// A checked and verified-to-exist mod ID.
+///
+/// A thin wrapper for a `u64`, but everywhere that you see [`ModId`], you can assume
+/// that it is a valid mod ID, as opposed to a random number which may or may not exist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModId {
@@ -135,20 +188,21 @@ impl TrackedModsRaw {
     pub fn mods(&self) -> &[ModEntry] {
         &self.mods
     }
+}
 
-    /// Convert the faithful representation retrieved from NexusMods into a more rustic and
-    /// idiomatic variant.
-    pub fn into_mods(self) -> TrackedMods {
-        let mut mods: HashMap<String, Vec<ModId>> = HashMap::with_capacity(self.mods.len());
-        for entry in self.mods {
+impl From<TrackedModsRaw> for TrackedMods {
+    fn from(value: TrackedModsRaw) -> Self {
+        let mut mods: HashMap<String, Vec<ModId>> = HashMap::with_capacity(value.mods.len());
+        for entry in value.mods {
             mods.entry(entry.domain_name)
                 .or_default()
                 .push(entry.mod_id);
         }
-        TrackedMods { mods }
+        Self { mods }
     }
 }
 
+/// A collection of game names and tracked mod IDs.
 #[derive(Debug)]
 pub struct TrackedMods {
     mods: HashMap<String, Vec<ModId>>,
@@ -163,6 +217,15 @@ impl TrackedMods {
     /// Get all game names.
     pub fn games(&self) -> impl Iterator<Item = &str> {
         self.mods.keys().map(String::as_str)
+    }
+}
+
+impl IntoIterator for TrackedMods {
+    type Item = (String, Vec<ModId>);
+    type IntoIter = std::collections::hash_map::IntoIter<String, Vec<ModId>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.mods.into_iter()
     }
 }
 
@@ -497,16 +560,8 @@ impl ModFile {
         &self.file_name
     }
 
-    pub const fn uploaded_timestamp(&self) -> UtcDateTime {
+    pub const fn uploaded_at(&self) -> UtcDateTime {
         self.uploaded_timestamp.to_utc()
-    }
-
-    pub fn uploaded_timestamp_epoch(&self) -> i64 {
-        self.uploaded_timestamp.unix_timestamp()
-    }
-
-    pub const fn uploaded_time(&self) -> UtcDateTime {
-        self.uploaded_time.to_utc()
     }
 
     pub fn mod_version(&self) -> &str {
@@ -585,12 +640,8 @@ impl FileUpdate {
         (&self.old_file_name, &self.new_file_name)
     }
 
-    pub const fn uploaded_timestamp(&self) -> UtcDateTime {
+    pub const fn uploaded_at(&self) -> UtcDateTime {
         self.uploaded_timestamp.to_utc()
-    }
-
-    pub const fn uploaded_time(&self) -> UtcDateTime {
-        self.uploaded_time.to_utc()
     }
 }
 
@@ -698,5 +749,192 @@ impl Into<Duration> for TimePeriod {
             Self::Week => Duration::from_hours(24 * 7),
             Self::Month => Duration::from_hours(24 * 7 * 31),
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Changelog {
+    logs: HashMap<String, Vec<String>>,
+}
+
+impl Deref for Changelog {
+    type Target = HashMap<String, Vec<String>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.logs
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GameMod {
+    name: String,
+    summary: String,
+    description: String,
+    picture_url: Url,
+    mod_downloads: u64,
+    mod_unique_downloads: u64,
+    uid: u64,
+    game_id: u64,
+    allow_rating: bool,
+    domain_name: String,
+    category_id: u64,
+    version: String,
+    endorsement_count: u64,
+    #[serde(with = "time::serde::timestamp")]
+    created_timestamp: OffsetDateTime,
+    #[serde(with = "time::serde::iso8601")]
+    created_time: OffsetDateTime,
+    #[serde(with = "time::serde::timestamp")]
+    updated_timestamp: OffsetDateTime,
+    #[serde(with = "time::serde::iso8601")]
+    updated_time: OffsetDateTime,
+    author: String,
+    uploaded_by: String,
+    uploaded_users_profile_url: Url,
+    contains_adult_content: bool,
+    // TODO: Make this an enum probably
+    status: String,
+    available: bool,
+    #[serde(skip)]
+    user: (),
+    endorsement: EndorsementInfo,
+}
+
+impl GameMod {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    pub const fn mod_picture(&self) -> &Url {
+        &self.picture_url
+    }
+
+    pub const fn unique_downloads(&self) -> u64 {
+        self.mod_unique_downloads
+    }
+
+    pub const fn uid(&self) -> u64 {
+        self.uid
+    }
+
+    pub const fn game_id(&self) -> u64 {
+        self.game_id
+    }
+
+    pub const fn allow_rating(&self) -> bool {
+        self.allow_rating
+    }
+
+    pub fn domain_name(&self) -> &str {
+        &self.domain_name
+    }
+
+    pub const fn category_id(&self) -> u64 {
+        self.category_id
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub const fn endorsements(&self) -> u64 {
+        self.endorsement_count
+    }
+
+    pub const fn created_at(&self) -> UtcDateTime {
+        self.created_timestamp.to_utc()
+    }
+
+    pub const fn updated_at(&self) -> UtcDateTime {
+        self.updated_timestamp.to_utc()
+    }
+
+    pub fn author(&self) -> &str {
+        &self.author
+    }
+
+    pub fn uploaded_by(&self) -> &str {
+        &self.uploaded_by
+    }
+
+    pub const fn uploaded_by_profile_url(&self) -> &Url {
+        &self.uploaded_users_profile_url
+    }
+
+    pub const fn adult_content(&self) -> bool {
+        self.contains_adult_content
+    }
+
+    pub const fn available(&self) -> bool {
+        self.available
+    }
+
+    pub const fn endorsement(&self) -> &EndorsementInfo {
+        &self.endorsement
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EndorsementInfo {
+    endorse_status: HasEndorsed,
+    #[serde(serialize_with = "ts::serialize")]
+    #[serde(deserialize_with = "ts::deserialize")]
+    timestamp: Option<OffsetDateTime>,
+    version: Option<String>,
+}
+
+impl EndorsementInfo {
+    pub const fn status(&self) -> HasEndorsed {
+        self.endorse_status
+    }
+
+    pub const fn has_endorsed(&self) -> bool {
+        matches!(self.endorse_status, HasEndorsed::Endorsed)
+    }
+
+    pub const fn endorsed_at(&self) -> Option<OffsetDateTime> {
+        self.timestamp
+    }
+
+    pub fn endorsed_version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HasEndorsed {
+    Endorsed,
+    Undecided,
+}
+
+mod ts {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use time::OffsetDateTime;
+
+    pub fn serialize<S>(value: &Option<OffsetDateTime>, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(v) => s.serialize_i64(v.unix_timestamp()),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<Option<OffsetDateTime>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt = Option::<i64>::deserialize(d)?;
+        Ok(opt.map(|secs| OffsetDateTime::from_unix_timestamp(secs).unwrap()))
     }
 }

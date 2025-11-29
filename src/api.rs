@@ -10,8 +10,8 @@ use crate::{
     err::{self, delete, get, post, validate},
     nexus_joiner,
     request::{
-        CategoryName, Endorsements, GameId, ModFile, ModFiles, ModId, ModUpdated, TimePeriod,
-        TrackedModsRaw, Validate,
+        CategoryName, Changelog, Endorsements, GameId, GameMod, ModFile, ModFiles, ModId,
+        ModUpdated, RateLimiting, TimePeriod, TrackedModsRaw, Validate,
     },
 };
 
@@ -66,6 +66,8 @@ impl Api {
             .request(method, nexus_joiner!(ver, slugs))
             .query(params)
     }
+
+    // TODO: Add rate limiting checking.
 }
 
 /// User related methods.
@@ -118,8 +120,7 @@ impl Api {
     /// Get a list of the user's tracked mods.
     ///
     /// # Notes
-    /// Consider converting to [`TrackedMods`](`crate::request::TrackedMods`) with
-    /// [`crate::request::TrackedModsRaw::into_mods`].
+    /// Consider converting to [`TrackedMods`](`crate::request::TrackedMods`).
     pub async fn tracked_mods(&self) -> Result<TrackedModsRaw, validate::ValidateError> {
         let response = self
             .build(Method::GET, VERSION, &["user", "tracked_mods"], &[])
@@ -225,11 +226,11 @@ impl Api {
 /// Mod related methods.
 ///
 /// - [x] `GET`  [`v1/games/{game_domain_name}/mods/updated`](`Api::updated_during`)
-/// - [ ] `GET`  `v1/games/{game_domain_name}/mods/{mod_id}/changelogs`
+/// - [x] `GET`  `v1/games/{game_domain_name}/mods/{mod_id}/changelogs`
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/latest_added`
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/latest_updated`
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/trending`
-/// - [ ] `GET`  `v1/games/{game_domain_name}/mods/{id}`
+/// - [x] `GET`  `v1/games/{game_domain_name}/mods/{id}`
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/md5_search/{md5_hash}`
 /// - [ ] `POST` `v1/games/{game_domain_name}/mods/{id}/endorse`
 /// - [ ] `POST` `v1/games/{game_domain_name}/mods/{id}/abstain`
@@ -246,6 +247,64 @@ impl Api {
                 VERSION,
                 &["games", game, "mods", "updated"],
                 &[("period", time.as_str())],
+            )
+            .send()
+            .await?;
+
+        match response.status() {
+            StatusCode::OK => response.json().await.map_err(get::GameModError::Reqwest),
+            StatusCode::NOT_FOUND => Err(response.json::<err::InvalidAPIKeyError>().await?.into()),
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                unimplemented!(
+                    "I have not yet encountered this return code but it is listed as a valid return code"
+                );
+            }
+            _ => unreachable!("The only three documented return codes are 200, 404, and 422"),
+        }
+    }
+
+    /// Get changelogs for a mod.
+    pub async fn changelogs<T: Into<ModId>>(
+        &self,
+        game: &str,
+        id: T,
+    ) -> Result<Changelog, get::GameModError> {
+        let id = id.into();
+        let response = self
+            .build(
+                Method::GET,
+                VERSION,
+                &["games", game, "mods", id.to_string().as_str(), "changelogs"],
+                &[],
+            )
+            .send()
+            .await?;
+
+        match response.status() {
+            StatusCode::OK => response.json().await.map_err(get::GameModError::Reqwest),
+            StatusCode::NOT_FOUND => Err(response.json::<err::InvalidAPIKeyError>().await?.into()),
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                unimplemented!(
+                    "I have not yet encountered this return code but it is listed as a valid return code"
+                );
+            }
+            _ => unreachable!("The only three documented return codes are 200, 404, and 422"),
+        }
+    }
+
+    /// Get specific mod information.
+    pub async fn mod_info<T: Into<ModId>>(
+        &self,
+        game: &str,
+        id: T,
+    ) -> Result<GameMod, get::GameModError> {
+        let id = id.into();
+        let response = self
+            .build(
+                Method::GET,
+                VERSION,
+                &["games", game, "mods", id.to_string().as_str()],
+                &[],
             )
             .send()
             .await?;
