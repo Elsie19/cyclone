@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "A NexusMods API wrapper"
 license = "GPL-3.0"
+homepage = "https://github.com/Elsie19/cyclone"
 
 [dependencies]
 reqwest = { version = "0.12.24", features = ["json"] }
