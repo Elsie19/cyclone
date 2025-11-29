@@ -226,11 +226,11 @@ impl Api {
 /// Mod related methods.
 ///
 /// - [x] `GET`  [`v1/games/{game_domain_name}/mods/updated`](`Api::updated_during`)
-/// - [x] `GET`  `v1/games/{game_domain_name}/mods/{mod_id}/changelogs`
+/// - [x] `GET`  [`v1/games/{game_domain_name}/mods/{mod_id}/changelogs`](`Api::changelogs`)
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/latest_added`
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/latest_updated`
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/trending`
-/// - [x] `GET`  `v1/games/{game_domain_name}/mods/{id}`
+/// - [x] `GET`  [`v1/games/{game_domain_name}/mods/{id}`](`Api::mod_info`)
 /// - [ ] `GET`  `v1/games/{game_domain_name}/mods/md5_search/{md5_hash}`
 /// - [ ] `POST` `v1/games/{game_domain_name}/mods/{id}/endorse`
 /// - [ ] `POST` `v1/games/{game_domain_name}/mods/{id}/abstain`

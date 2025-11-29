@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display, ops::Deref, path::PathBuf, time::D
 
 use reqwest::Url;
 use serde::{
-    Deserialize, Serialize, Serializer,
+    Deserialize, Serialize,
     de::{self, Visitor},
 };
 use time::{OffsetDateTime, UtcDateTime};
@@ -393,7 +393,7 @@ impl<'de> Deserialize<'de> for Category {
     {
         struct CategoryVisitor;
 
-        impl<'de> Visitor<'de> for CategoryVisitor {
+        impl Visitor<'_> for CategoryVisitor {
             type Value = Category;
 
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
